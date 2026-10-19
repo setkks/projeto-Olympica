@@ -5,7 +5,7 @@ import requests
 st.set_page_config(page_title="Olympica - Gestão de Ginástica", page_icon="🏅", layout="wide")
 
 # URL Base do Grupo de APIs no Xano com /gestao no final
-XANO_BASE_URL = "https://x8ki-letl-twmt.n7.xano.io/api:uXJ4j_28/gestao"
+XANO_BASE_URL = "https://x8ki-letl-twmt.n7.xano.io/api:52CFRzCV"
 
 # Inicialização do estado de sessão
 if "authenticated" not in st.session_state:
