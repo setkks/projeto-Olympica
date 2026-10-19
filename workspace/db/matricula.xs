@@ -1,22 +1,12 @@
-db.table "matricula" {
+table "matricula" {
   auth = false
 
   schema {
-    int id {
-      primary = true
-    }
-    timestamp created_at {
-      default = "now"
-    }
-    int atleta_id {
-      table = "atleta"
-    }
-    int turma_id {
-      table = "turma"
-    }
+    int id
+    timestamp created_at
+    int atleta_id
+    int turma_id
     date data_matricula
-    text status {
-      default = "Ativa"
-    }
+    text status
   }
 }

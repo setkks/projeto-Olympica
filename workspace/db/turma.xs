@@ -1,17 +1,11 @@
-db.table "turma" {
+table "turma" {
   auth = false
 
   schema {
-    int id {
-      primary = true
-    }
-    timestamp created_at {
-      default = "now"
-    }
+    int id
+    timestamp created_at
     text nome
     text horario
-    int capacidade {
-      default = 15
-    }
+    int capacidade
   }
 }
