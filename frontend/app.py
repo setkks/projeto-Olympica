@@ -4,16 +4,43 @@ import requests
 # Configuração da página
 st.set_page_config(page_title="Olympica - Gestão de Ginástica", page_icon="🏅", layout="wide")
 
-# URL base do seu backend no Xano (substitua pela sua URL do Xano quando necessário)
+# URL Base do Grupo de APIs no Xano (substitua pela URL do seu workspace se for diferente)
 XANO_BASE_URL = "https://x8ki-letl-twmt.n7.xano.io/api:uXJ4j_28" 
 
-# Inicialização de estado de sessão para autenticação
+# Inicialização do estado de sessão
 if "authenticated" not in st.session_state:
     st.session_state.authenticated = False
 if "token" not in st.session_state:
     st.session_state.token = None
 if "user" not in st.session_state:
     st.session_state.user = None
+
+# Funções auxiliares para requisições à API
+def get_headers():
+    headers = {"Content-Type": "application/json"}
+    if st.session_state.token:
+        headers["Authorization"] = f"Bearer {st.session_state.token}"
+    return headers
+
+def fetch_data(endpoint):
+    try:
+        response = requests.get(f"{XANO_BASE_URL}{endpoint}", headers=get_headers())
+        if response.status_code == 200:
+            return response.json()
+        st.error(f"Erro ao carregar dados ({response.status_code}): {response.text}")
+        return []
+    except Exception as e:
+        st.error(f"Erro na conexão com a API: {e}")
+        return []
+
+def post_data(endpoint, payload):
+    try:
+        response = requests.post(f"{XANO_BASE_URL}{endpoint}", json=payload, headers=get_headers())
+        if response.status_code in [200, 201]:
+            return True, response.json()
+        return False, response.text
+    except Exception as e:
+        return False, str(e)
 
 # --- TELA DE LOGIN ---
 def show_login():
@@ -27,28 +54,25 @@ def show_login():
         
         if st.button("Entrar", type="primary", use_container_width=True):
             if email and password:
-                # Simulação / Integração com endpoint /auth/login do Xano
-                try:
-                    payload = {"email": email, "password": password}
-                    # Exemplo de chamada real:
-                    # res = requests.post(f"{XANO_BASE_URL}/auth/login", json=payload)
-                    # if res.status_code == 200:
-                    #     data = res.json()
-                    #     st.session_state.token = data.get("authToken")
-                    #     st.session_state.authenticated = True
-                    
-                    # Modo de demonstração local rápido:
-                    st.session_state.token = "fake_jwt_token_olympica"
-                    st.session_state.user = {"name": "Administrador", "email": email}
+                # Tenta autenticar na API do Xano
+                success, result = post_data("/auth/login", {"email": email, "password": password})
+                if success and isinstance(result, dict) and "authToken" in result:
+                    st.session_state.token = result.get("authToken")
+                    st.session_state.user = {"name": email.split("@")[0].capitalize(), "email": email}
                     st.session_state.authenticated = True
                     st.success("Login realizado com sucesso!")
                     st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao conectar com o backend: {e}")
+                else:
+                    # Fallback / Modo de demonstração local se o login ainda não estiver rodando no Xano
+                    st.info("Conectando em modo local / demonstração...")
+                    st.session_state.token = "demo_jwt_token"
+                    st.session_state.user = {"name": email.split("@")[0].capitalize(), "email": email}
+                    st.session_state.authenticated = True
+                    st.rerun()
             else:
                 st.warning("Preencha todos os campos.")
 
-# --- TELA PRINCIPAL (APÓS LOGIN) ---
+# --- TELA PRINCIPAL (DASHBOARD & MÓDULOS) ---
 def show_dashboard():
     st.sidebar.markdown(f"**Usuário:** {st.session_state.user.get('name', 'Admin')}")
     st.sidebar.caption(f"E-mail: {st.session_state.user.get('email', '')}")
@@ -64,16 +88,18 @@ def show_dashboard():
 
     if opcao == "Dashboard":
         st.title("📊 Painel Geral")
+        atletas = fetch_data("/atleta")
+        turmas = fetch_data("/turma")
+        
         col1, col2, col3 = st.columns(3)
-        col1.metric("Atletas Cadastrados", "12")
-        col2.metric("Turmas Ativas", "4")
-        col3.metric("Matrículas Realizadas", "18")
-        st.info("Selecione um dos módulos no menu lateral para gerenciar os dados.")
+        col1.metric("Atletas Cadastrados", len(atletas) if isinstance(atletas, list) else 0)
+        col2.metric("Turmas Ativas", len(turmas) if isinstance(turmas, list) else 0)
+        col3.metric("Matrículas Realizadas", "0")
 
     elif opcao == "Atletas":
         st.title("🏃‍♂️ Gestão de Atletas")
         
-        with st.expander("➕ Cadastrar Novo Atleta", expanded=True):
+        with st.expander("➕ Cadastrar Novo Atleta", expanded=False):
             with st.form("form_atleta"):
                 nome = st.text_input("Nome Completo")
                 data_nasc = st.date_input("Data de Nascimento")
@@ -81,17 +107,24 @@ def show_dashboard():
                 cadastrar = st.form_submit_button("Salvar Atleta")
                 
                 if cadastrar:
-                    st.success(f"Atleta '{nome}' cadastrado com sucesso!")
+                    payload = {
+                        "nome": nome,
+                        "data_nascimento": str(data_nasc),
+                        "categoria": categoria
+                    }
+                    ok, res = post_data("/atleta", payload)
+                    if ok:
+                        st.success(f"Atleta '{nome}' cadastrado no Xano com sucesso!")
+                        st.rerun()
+                    else:
+                        st.error(f"Erro ao cadastrar atleta: {res}")
 
-        st.subheader("Lista de Atletas")
-        # Exemplo de tabela de listagem
-        st.dataframe(
-            [
-                {"ID": 1, "Nome": "Ana Silva", "Categoria": "Infantil", "Status": "Ativo"},
-                {"ID": 2, "Nome": "Lucas Mendes", "Categoria": "Juvenil", "Status": "Ativo"},
-            ],
-            use_container_width=True
-        )
+        st.subheader("Lista de Atletas Registrados")
+        atletas = fetch_data("/atleta")
+        if atletas and isinstance(atletas, list):
+            st.dataframe(atletas, use_container_width=True)
+        else:
+            st.info("Nenhum atleta cadastrado ainda.")
 
     elif opcao == "Turmas":
         st.title("🤸‍♀️ Gestão de Turmas")
@@ -104,20 +137,53 @@ def show_dashboard():
                 salvar_turma = st.form_submit_button("Criar Turma")
                 
                 if salvar_turma:
-                    st.success(f"Turma '{nome_turma}' criada com sucesso!")
+                    payload = {
+                        "nome": nome_turma,
+                        "horario": horario,
+                        "capacidade": int(capacidade)
+                    }
+                    ok, res = post_data("/turma", payload)
+                    if ok:
+                        st.success(f"Turma '{nome_turma}' registrada com sucesso!")
+                        st.rerun()
+                    else:
+                        st.error(f"Erro ao criar turma: {res}")
+
+        st.subheader("Turmas Ativas")
+        turmas = fetch_data("/turma")
+        if turmas and isinstance(turmas, list):
+            st.dataframe(turmas, use_container_width=True)
+        else:
+            st.info("Nenhuma turma cadastrada ainda.")
 
     elif opcao == "Matrículas":
         st.title("📝 Vínculo Atleta-Turma")
-        st.write("Realize a matrícula de um atleta registrado em uma das turmas ativas.")
         
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.selectbox("Selecione o Atleta", ["Ana Silva", "Lucas Mendes"])
-        with col_b:
-            st.selectbox("Selecione a Turma", ["GA Solo Infantil - Seg/Qua", "GA Trave Juvenil - Ter/Qui"])
+        atletas = fetch_data("/atleta")
+        turmas = fetch_data("/turma")
+        
+        if atletas and turmas and isinstance(atletas, list) and isinstance(turmas, list):
+            dict_atletas = {f"{a.get('nome')} (ID: {a.get('id')})": a.get('id') for a in atletas}
+            dict_turmas = {f"{t.get('nome')} (ID: {t.get('id')})": t.get('id') for t in turmas}
             
-        if st.button("Confirmar Matrícula", type="primary"):
-            st.success("Matrícula realizada com sucesso!")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                atleta_sel = st.selectbox("Selecione o Atleta", list(dict_atletas.keys()))
+            with col_b:
+                turma_sel = st.selectbox("Selecione a Turma", list(dict_turmas.keys()))
+                
+            if st.button("Confirmar Matrícula", type="primary"):
+                payload = {
+                    "atleta_id": dict_atletas[atleta_sel],
+                    "turma_id": dict_turmas[turma_sel]
+                }
+                ok, res = post_data("/matricula", payload)
+                if ok:
+                    st.success("Matrícula realizada com sucesso!")
+                else:
+                    st.error(f"Erro ao vincular matrícula: {res}")
+        else:
+            st.warning("É necessário ter pelo menos um atleta e uma turma cadastrados para realizar matrículas.")
 
 # --- FLUXO PRINCIPAL ---
 if not st.session_state.authenticated:
